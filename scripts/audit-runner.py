@@ -1,21 +1,15 @@
 #!/usr/bin/env python3
 """
-Standalone audit runner for GHA / Netlify batch processing.
+Standalone audit runner — scans OPUS preview files (public, flat structure).
 
-Downloads SLDF + master-db from the public web-daw-samples repo,
-audits the assigned batch of libraries, and writes results as JSONL.
-
-Usage:
-  python3 scripts/audit-runner.py --batch-index 0
-  python3 scripts/audit-runner.py --batch-index 0 --results-dir results/
+Downloads opus files from public adc-* repos, runs structural + pitch + loudness checks.
+Opus is preferred over FLAC because:
+- Public repos (no auth needed)
+- Flat filename structure (no relative path issues)
+- Smaller files (faster downloads)
+- Same audio content for QC purposes
 """
-import argparse
-import json
-import os
-import sys
-import time
-import urllib.request
-import tempfile
+import argparse, json, os, sys, time, urllib.request, tempfile
 from pathlib import Path
 from collections import defaultdict
 
@@ -29,7 +23,6 @@ try:
 except ImportError:
     HAS_PYLLOUDNORM = False
 
-# CONFIG
 OWNER = "zulfikarbarbora-outl"
 REPO = "web-daw-samples"
 BRANCH = "main"
@@ -39,12 +32,11 @@ BATCH_PLAN_URL = "https://raw.githubusercontent.com/admin-sonicloud/sample-audit
 NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 def midi_to_name(midi):
     return f"{NOTE_NAMES[midi % 12]}{midi // 12 - 1}"
-
 def midi_to_freq(midi):
     return 440.0 * (2.0 ** ((midi - 69) / 12.0))
 
 def download_json(url):
-    headers = {"User-Agent": "audit-runner/1.0"}
+    headers = {"User-Agent": "audit-runner/2.0"}
     token = os.environ.get("GH_TOKEN", "")
     if token:
         headers["Authorization"] = f"token {token}"
@@ -53,7 +45,8 @@ def download_json(url):
         return json.loads(r.read())
 
 def download_file(url, dest_path, timeout=60):
-    headers = {"User-Agent": "audit-runner/1.0"}
+    # Opus files are in PUBLIC repos — no auth needed, but add if available
+    headers = {"User-Agent": "audit-runner/2.0"}
     token = os.environ.get("GH_TOKEN", "")
     if token:
         headers["Authorization"] = f"token {token}"
@@ -108,8 +101,7 @@ def check_pitch(y, sr, root_note):
     n = len(y)
     y_mid = y[int(n*0.2):int(n*0.8)]
     if len(y_mid) < sr * 0.05: y_mid = y
-    
-    # piptrack
+
     detected_freq, confidence = None, 0
     try:
         pitches, mags = librosa.piptrack(y=y_mid, sr=sr, threshold=0.5)
@@ -123,8 +115,7 @@ def check_pitch(y, sr, root_note):
                 detected_freq = float(np.median(valid))
                 confidence = max(0, 1 - float(np.std(np.log2(valid / detected_freq))) * 10) if len(valid) > 1 else 0.5
     except: pass
-    
-    # pyin
+
     voiced_ratio, pyin_freq = 0, None
     try:
         f0, vf, vp = librosa.pyin(y_mid, sr=sr, fmin=65, fmax=2100, fill_na=np.nan)
@@ -133,11 +124,11 @@ def check_pitch(y, sr, root_note):
             vf0 = f0[vf]
             if len(vf0) > 0: pyin_freq = float(np.median(vf0))
     except: pass
-    
+
     result["piptrackFreq"] = round(detected_freq, 2) if detected_freq else None
     result["pyinFreq"] = round(pyin_freq, 2) if pyin_freq else None
     result["voicedRatio"] = round(voiced_ratio, 3)
-    
+
     best = detected_freq or pyin_freq
     if best:
         exp = midi_to_freq(root_note)
@@ -176,22 +167,26 @@ def check_loudness(y, sr):
     result["rmsDb"] = round(20 * np.log10(max(rms, 1e-10)), 2)
     return result
 
-def audit_zone(zone, lib_id, base_url, opus_base_url, is_sliced=False):
+def audit_zone(zone, lib_id, opus_base_url):
+    """Audit a single zone using the OPUS preview file."""
     result = {
         "library": lib_id,
         "zoneRootNote": zone.get("rootNote"),
         "zoneNoteName": midi_to_name(zone.get("rootNote", 60)),
         "zoneVelocity": zone.get("velocity", zone.get("loVelocity", 64)),
         "zoneRoundRobin": zone.get("roundRobin", 1),
+        "audioFormat": "opus",
     }
-    lp = zone.get("losslessPath", "")
-    if not lp:
-        result["error"] = "no losslessPath"
+
+    opus_file = zone.get("previewOpus48Path", "")
+    if not opus_file:
+        result["error"] = "no previewOpus48Path"
         result["status"] = "fail"
         return result
-    url = (opus_base_url + "flac/" + lp) if is_sliced else (base_url + lp)
-    
-    with tempfile.NamedTemporaryFile(suffix=".flac", delete=False) as tmp:
+
+    url = opus_base_url + opus_file
+
+    with tempfile.NamedTemporaryFile(suffix=".opus", delete=False) as tmp:
         tp = Path(tmp.name)
     try:
         if not download_file(url, tp):
@@ -199,20 +194,20 @@ def audit_zone(zone, lib_id, base_url, opus_base_url, is_sliced=False):
             result["status"] = "fail"
             return result
         try:
-            y, sr = sf.read(str(tp), always_2d=False)
-            subtype = sf.info(str(tp)).subtype
+            # librosa can load opus via ffmpeg
+            y, sr = librosa.load(str(tp), sr=None, mono=True)
+            subtype = "PCM_16"  # opus decodes to float
         except Exception as e:
             result["error"] = f"load_failed"
             result["status"] = "fail"
             return result
-        if y.ndim > 1: y = y.mean(axis=1)
-        
+
         sm, si = check_structural(y, sr, subtype)
         result["structural"] = sm
         if si: result["structuralIssues"] = si
         result["pitch"] = check_pitch(y, sr, zone.get("rootNote", 60))
         result["loudness"] = check_loudness(y, sr)
-        
+
         issues = si[:]
         ps = result["pitch"].get("pitchStatus")
         if ps in ["wrong_pitch", "error"]: issues.append(f"pitch: {ps}")
@@ -251,7 +246,6 @@ def main():
     start = time.time()
 
     for i, lib_spec in enumerate(batch):
-        # Parse lib_spec: "lib_id" or "lib_id:start-end" (for chunked big libs)
         if ":" in lib_spec:
             lib_id, zone_range = lib_spec.split(":", 1)
             start_zone, end_zone = map(int, zone_range.split("-"))
@@ -269,7 +263,6 @@ def main():
         else:
             print(f"[{i+1}/{len(batch)}] {lib_id} - {zc} zones", flush=True)
 
-        # Download SLDF
         for ext in [".sldf.v3.json", ".sldf.v4.json", ".sldf.json"]:
             try:
                 sldf = download_json(RAW_BASE + f"sldf/{lib_id}{ext}")
@@ -281,24 +274,23 @@ def main():
             continue
 
         zones = [z for inst in sldf.get("instruments", []) for z in inst.get("zones", [])]
-        # Apply zone range if specified (for chunked big libs)
         if start_zone is not None:
             zones = zones[start_zone:end_zone]
         if args.limit: zones = zones[:args.limit]
 
-        base_url = lib.get("losslessBaseUrl", "")
         opus_base_url = lib.get("opusBaseUrl", "")
-        is_sliced = lib.get("sourceFormat") == "freesound" and "qualityScore" in lib
+        if not opus_base_url:
+            print(f"  SKIP {lib_id}: no opusBaseUrl", flush=True)
+            continue
 
         for j, zone in enumerate(zones):
-            r = audit_zone(zone, lib_id, base_url, opus_base_url, is_sliced)
+            r = audit_zone(zone, lib_id, opus_base_url)
             all_results.append(r)
             if (j + 1) % 50 == 0:
                 el = time.time() - start
                 rate = (j + 1) / el
                 print(f"  [{j+1}/{len(zones)}] {lib_id} | {rate:.1f}/s | ETA {int((len(zones)-j-1)/rate)}s", flush=True)
 
-        # Incremental save
         with open(output_file, "w") as f:
             for r in all_results:
                 f.write(json.dumps(r) + "\n")
@@ -312,7 +304,6 @@ def main():
     print(f"  Zones: {len(all_results)} | Time: {el:.1f}s | OK: {ok} WARN: {warn} FAIL: {fail}", flush=True)
     print(f"  Output: {output_file}", flush=True)
 
-    # Write summary
     summary = {"batchIndex": args.batch_index, "libraries": batch, "totalZones": len(all_results),
                "ok": ok, "warn": warn, "fail": fail, "elapsed": round(el, 1)}
     (results_dir / f"batch-{args.batch_index:03d}-summary.json").write_text(json.dumps(summary, indent=2))
