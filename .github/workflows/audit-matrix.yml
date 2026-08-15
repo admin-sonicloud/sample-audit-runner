@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       start-batch:
-        description: 'Start batch index (default 0)'
+        description: 'Start batch index'
         required: false
         default: '0'
       end-batch:
-        description: 'End batch index (exclusive, default 5 for pilot)'
+        description: 'End batch index (exclusive)'
         required: false
         default: '5'
   push:
@@ -27,16 +27,12 @@ jobs:
         run: |
           START=${{ github.event.inputs.start-batch || '0' }}
           END=${{ github.event.inputs.end-batch || '5' }}
-          # Generate comma-separated list, then JSON-ify as single line
           INDICES=""
           for i in $(seq $START $((END - 1))); do
-            if [ -z "$INDICES" ]; then
-              INDICES="$i"
-            else
-              INDICES="$INDICES,$i"
+            if [ -z "$INDICES" ]; then INDICES="$i"
+            else INDICES="$INDICES,$i"
             fi
           done
-          # Output as JSON array on single line
           echo "matrix=[$INDICES]" >> $GITHUB_OUTPUT
           echo "Batches: [$INDICES]"
 
@@ -73,6 +69,19 @@ jobs:
           name: batch-${{ matrix.batch-index }}-results
           path: results/
           retention-days: 90
+
+      - name: Push results to results repo
+        env:
+          RESULTS_PAT: ${{ secrets.RESULTS_PAT }}
+        run: |
+          cd results
+          git init
+          git config user.name "audit-bot"
+          git config user.email "audit-bot@users.noreply.github.com"
+          git checkout -b main
+          git add .
+          git commit -m "batch ${{ matrix.batch-index }} results"
+          git push --force "https://${RESULTS_PAT}@github.com/admin-sonicloud/sample-audit-results.git" main
 
       - name: Print summary
         run: |
