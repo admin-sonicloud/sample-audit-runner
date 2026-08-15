@@ -1,93 +1,333 @@
 [
   [
-    "sonatina-symphonic-orchestra"
+    "sonatina-symphonic-orchestra:0-5000"
   ],
   [
-    "drumgizmo-drskit"
+    "sonatina-symphonic-orchestra:5000-10000"
   ],
   [
-    "virtual-playing-orchestra-3"
+    "sonatina-symphonic-orchestra:10000-15000"
   ],
   [
-    "naked-drums"
+    "sonatina-symphonic-orchestra:15000-20000"
   ],
   [
-    "sonic-implants-symphonic-strings"
+    "sonatina-symphonic-orchestra:20000-25000"
   ],
   [
-    "meatbass"
+    "sonatina-symphonic-orchestra:25000-30000"
   ],
   [
-    "war-tuba"
+    "sonatina-symphonic-orchestra:30000-35000"
   ],
   [
-    "chorium-reva"
+    "sonatina-symphonic-orchestra:35000-40000"
   ],
   [
-    "fender-chroma-polaris"
+    "sonatina-symphonic-orchestra:40000-40759"
   ],
   [
-    "bear-sax"
+    "drumgizmo-drskit:0-5000"
   ],
   [
-    "legato-vocal"
+    "drumgizmo-drskit:5000-10000"
   ],
   [
-    "sgm-v2"
+    "drumgizmo-drskit:10000-15000"
   ],
   [
-    "new-wave-station-2024"
+    "drumgizmo-drskit:15000-20000"
   ],
   [
-    "shinyguitar"
+    "drumgizmo-drskit:20000-25000"
   ],
   [
-    "generaluser-gs"
+    "drumgizmo-drskit:25000-30000"
   ],
   [
-    "black-and-green-guitars"
+    "drumgizmo-drskit:30000-35000"
   ],
   [
-    "drum-abuse-vol2"
+    "drumgizmo-drskit:35000-39936"
   ],
   [
-    "sm-drums"
+    "virtual-playing-orchestra-3:0-5000"
   ],
   [
-    "drum-abuse-vol3"
+    "virtual-playing-orchestra-3:5000-10000"
   ],
   [
-    "cello-karoryfer"
+    "virtual-playing-orchestra-3:10000-15000"
   ],
   [
-    "drum-abuse-vol4"
+    "virtual-playing-orchestra-3:15000-20000"
   ],
   [
-    "muldjord-kit"
+    "virtual-playing-orchestra-3:20000-25000"
   ],
   [
-    "timbres-of-heaven-xgm"
+    "virtual-playing-orchestra-3:25000-30000"
   ],
   [
-    "frankensnare"
+    "virtual-playing-orchestra-3:30000-30021"
   ],
   [
-    "black-and-blue-basses"
+    "naked-drums:0-5000"
   ],
   [
-    "unruly-drums"
+    "naked-drums:5000-10000"
   ],
   [
-    "sga360-xg"
+    "naked-drums:10000-15000"
   ],
   [
-    "pastabass"
+    "naked-drums:15000-20000"
   ],
   [
-    "big-little-bass"
+    "naked-drums:20000-25000"
   ],
   [
-    "virtuosity-drums"
+    "naked-drums:25000-27800"
+  ],
+  [
+    "sonic-implants-symphonic-strings:0-5000"
+  ],
+  [
+    "sonic-implants-symphonic-strings:5000-10000"
+  ],
+  [
+    "sonic-implants-symphonic-strings:10000-15000"
+  ],
+  [
+    "sonic-implants-symphonic-strings:15000-20000"
+  ],
+  [
+    "sonic-implants-symphonic-strings:20000-25000"
+  ],
+  [
+    "sonic-implants-symphonic-strings:25000-27011"
+  ],
+  [
+    "meatbass:0-5000"
+  ],
+  [
+    "meatbass:5000-10000"
+  ],
+  [
+    "meatbass:10000-15000"
+  ],
+  [
+    "meatbass:15000-20000"
+  ],
+  [
+    "meatbass:20000-25000"
+  ],
+  [
+    "meatbass:25000-26872"
+  ],
+  [
+    "war-tuba:0-5000"
+  ],
+  [
+    "war-tuba:5000-10000"
+  ],
+  [
+    "war-tuba:10000-15000"
+  ],
+  [
+    "war-tuba:15000-20000"
+  ],
+  [
+    "war-tuba:20000-23769"
+  ],
+  [
+    "chorium-reva:0-5000"
+  ],
+  [
+    "chorium-reva:5000-10000"
+  ],
+  [
+    "chorium-reva:10000-15000"
+  ],
+  [
+    "chorium-reva:15000-20000"
+  ],
+  [
+    "chorium-reva:20000-20578"
+  ],
+  [
+    "fender-chroma-polaris:0-5000"
+  ],
+  [
+    "fender-chroma-polaris:5000-10000"
+  ],
+  [
+    "fender-chroma-polaris:10000-15000"
+  ],
+  [
+    "fender-chroma-polaris:15000-18490"
+  ],
+  [
+    "bear-sax:0-5000"
+  ],
+  [
+    "bear-sax:5000-10000"
+  ],
+  [
+    "bear-sax:10000-15000"
+  ],
+  [
+    "bear-sax:15000-17750"
+  ],
+  [
+    "legato-vocal:0-5000"
+  ],
+  [
+    "legato-vocal:5000-10000"
+  ],
+  [
+    "legato-vocal:10000-15000"
+  ],
+  [
+    "legato-vocal:15000-17143"
+  ],
+  [
+    "sgm-v2:0-5000"
+  ],
+  [
+    "sgm-v2:5000-10000"
+  ],
+  [
+    "sgm-v2:10000-15000"
+  ],
+  [
+    "sgm-v2:15000-15320"
+  ],
+  [
+    "new-wave-station-2024:0-5000"
+  ],
+  [
+    "new-wave-station-2024:5000-10000"
+  ],
+  [
+    "new-wave-station-2024:10000-14457"
+  ],
+  [
+    "shinyguitar:0-5000"
+  ],
+  [
+    "shinyguitar:5000-10000"
+  ],
+  [
+    "shinyguitar:10000-13868"
+  ],
+  [
+    "generaluser-gs:0-5000"
+  ],
+  [
+    "generaluser-gs:5000-10000"
+  ],
+  [
+    "generaluser-gs:10000-10434"
+  ],
+  [
+    "black-and-green-guitars:0-5000"
+  ],
+  [
+    "black-and-green-guitars:5000-10000"
+  ],
+  [
+    "black-and-green-guitars:10000-10430"
+  ],
+  [
+    "drum-abuse-vol2:0-5000"
+  ],
+  [
+    "drum-abuse-vol2:5000-10000"
+  ],
+  [
+    "drum-abuse-vol2:10000-10099"
+  ],
+  [
+    "sm-drums:0-5000"
+  ],
+  [
+    "sm-drums:5000-10000"
+  ],
+  [
+    "sm-drums:10000-10074"
+  ],
+  [
+    "drum-abuse-vol3:0-5000"
+  ],
+  [
+    "drum-abuse-vol3:5000-9008"
+  ],
+  [
+    "cello-karoryfer:0-5000"
+  ],
+  [
+    "cello-karoryfer:5000-8984"
+  ],
+  [
+    "drum-abuse-vol4:0-5000"
+  ],
+  [
+    "drum-abuse-vol4:5000-8836"
+  ],
+  [
+    "muldjord-kit:0-5000"
+  ],
+  [
+    "muldjord-kit:5000-8512"
+  ],
+  [
+    "timbres-of-heaven-xgm:0-5000"
+  ],
+  [
+    "timbres-of-heaven-xgm:5000-8028"
+  ],
+  [
+    "frankensnare:0-5000"
+  ],
+  [
+    "frankensnare:5000-7628"
+  ],
+  [
+    "black-and-blue-basses:0-5000"
+  ],
+  [
+    "black-and-blue-basses:5000-6852"
+  ],
+  [
+    "unruly-drums:0-5000"
+  ],
+  [
+    "unruly-drums:5000-6254"
+  ],
+  [
+    "sga360-xg:0-5000"
+  ],
+  [
+    "sga360-xg:5000-5336"
+  ],
+  [
+    "pastabass:0-5000"
+  ],
+  [
+    "pastabass:5000-5307"
+  ],
+  [
+    "big-little-bass:0-5000"
+  ],
+  [
+    "big-little-bass:5000-5148"
+  ],
+  [
+    "virtuosity-drums:0-5000"
+  ],
+  [
+    "virtuosity-drums:5000-5095"
   ],
   [
     "swirly-drums"
