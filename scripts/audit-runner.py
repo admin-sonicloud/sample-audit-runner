@@ -250,13 +250,24 @@ def main():
     all_results = []
     start = time.time()
 
-    for i, lib_id in enumerate(batch):
+    for i, lib_spec in enumerate(batch):
+        # Parse lib_spec: "lib_id" or "lib_id:start-end" (for chunked big libs)
+        if ":" in lib_spec:
+            lib_id, zone_range = lib_spec.split(":", 1)
+            start_zone, end_zone = map(int, zone_range.split("-"))
+        else:
+            lib_id = lib_spec
+            start_zone, end_zone = None, None
+
         lib = lib_map.get(lib_id)
         if not lib:
             print(f"  SKIP {lib_id}: not in master-db", flush=True)
             continue
         zc = lib.get("zoneCount", 0)
-        print(f"[{i+1}/{len(batch)}] {lib_id} - {zc} zones", flush=True)
+        if start_zone is not None:
+            print(f"[{i+1}/{len(batch)}] {lib_id} - zones {start_zone}-{end_zone} of {zc}", flush=True)
+        else:
+            print(f"[{i+1}/{len(batch)}] {lib_id} - {zc} zones", flush=True)
 
         # Download SLDF
         for ext in [".sldf.v3.json", ".sldf.v4.json", ".sldf.json"]:
@@ -270,6 +281,9 @@ def main():
             continue
 
         zones = [z for inst in sldf.get("instruments", []) for z in inst.get("zones", [])]
+        # Apply zone range if specified (for chunked big libs)
+        if start_zone is not None:
+            zones = zones[start_zone:end_zone]
         if args.limit: zones = zones[:args.limit]
 
         base_url = lib.get("losslessBaseUrl", "")
