@@ -1,7 +1,6 @@
 name: Sample Audit (Matrix)
 
 on:
-  # Manual trigger with batch range
   workflow_dispatch:
     inputs:
       start-batch:
@@ -12,7 +11,6 @@ on:
         description: 'End batch index (exclusive, default 5 for pilot)'
         required: false
         default: '5'
-  # Push to main triggers pilot (first 5 batches)
   push:
     branches: [main]
     paths:
@@ -20,7 +18,6 @@ on:
       - '.github/workflows/audit-matrix.yml'
 
 jobs:
-  # Job 1: Generate the matrix of batch indices
   prepare:
     runs-on: ubuntu-latest
     outputs:
@@ -30,18 +27,26 @@ jobs:
         run: |
           START=${{ github.event.inputs.start-batch || '0' }}
           END=${{ github.event.inputs.end-batch || '5' }}
-          INDICES=$(seq $START $((END - 1)) | jq -R . | jq -s .)
-          echo "matrix=$INDICES" >> $GITHUB_OUTPUT
-          echo "Batches: $INDICES"
+          # Generate comma-separated list, then JSON-ify as single line
+          INDICES=""
+          for i in $(seq $START $((END - 1))); do
+            if [ -z "$INDICES" ]; then
+              INDICES="$i"
+            else
+              INDICES="$INDICES,$i"
+            fi
+          done
+          # Output as JSON array on single line
+          echo "matrix=[$INDICES]" >> $GITHUB_OUTPUT
+          echo "Batches: [$INDICES]"
 
-  # Job 2: Run audit for each batch in parallel
   audit:
     needs: prepare
     runs-on: ubuntu-latest
-    timeout-minutes: 350  # 5h50m limit (GHA 6h cap)
+    timeout-minutes: 350
     strategy:
       fail-fast: false
-      max-parallel: 10  # GHA free tier: 20 concurrent jobs for public repos
+      max-parallel: 10
       matrix:
         batch-index: ${{ fromJson(needs.prepare.outputs.matrix) }}
     steps:
