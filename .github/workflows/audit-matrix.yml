@@ -1,0 +1,74 @@
+name: Sample Audit (Matrix)
+
+on:
+  # Manual trigger with batch range
+  workflow_dispatch:
+    inputs:
+      start-batch:
+        description: 'Start batch index (default 0)'
+        required: false
+        default: '0'
+      end-batch:
+        description: 'End batch index (exclusive, default 5 for pilot)'
+        required: false
+        default: '5'
+  # Push to main triggers pilot (first 5 batches)
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/**'
+      - '.github/workflows/audit-matrix.yml'
+
+jobs:
+  # Job 1: Generate the matrix of batch indices
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.gen.outputs.matrix }}
+    steps:
+      - id: gen
+        run: |
+          START=${{ github.event.inputs.start-batch || '0' }}
+          END=${{ github.event.inputs.end-batch || '5' }}
+          INDICES=$(seq $START $((END - 1)) | jq -R . | jq -s .)
+          echo "matrix=$INDICES" >> $GITHUB_OUTPUT
+          echo "Batches: $INDICES"
+
+  # Job 2: Run audit for each batch in parallel
+  audit:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 350  # 5h50m limit (GHA 6h cap)
+    strategy:
+      fail-fast: false
+      max-parallel: 10  # GHA free tier: 20 concurrent jobs for public repos
+      matrix:
+        batch-index: ${{ fromJson(needs.prepare.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          python3 -c "import librosa, soundfile, pyloudnorm; print('deps OK')"
+
+      - name: Run audit batch ${{ matrix.batch-index }}
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          python3 scripts/audit-runner.py --batch-index ${{ matrix.batch-index }} --results-dir results/
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: batch-${{ matrix.batch-index }}-results
+          path: results/
+          retention-days: 90
+
+      - name: Print summary
+        run: |
+          cat results/batch-${{ matrix.batch-index }}-summary.json || echo "No summary file"
