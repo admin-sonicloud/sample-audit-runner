@@ -35,10 +35,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: sample-audit-matrix
-  cancel-in-progress: false
-
 jobs:
   prepare:
     runs-on: ubuntu-latest
