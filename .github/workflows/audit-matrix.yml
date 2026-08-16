@@ -112,11 +112,12 @@ jobs:
           WEB_DAW_SAMPLES_PAT: ${{ secrets.WEB_DAW_SAMPLES_PAT }}
         run: |
           cd web-daw-samples
+          BATCH_PADDED=$(printf "%03d" ${{ matrix.batch-index }})
           git config user.name "audit-bot"
           git config user.email "audit-bot@users.noreply.github.com"
           git remote set-url origin "https://x-access-token:${WEB_DAW_SAMPLES_PAT}@github.com/zulfikarbarbora-outl/web-daw-samples.git"
           git pull --rebase --autostash origin main || true
-          git add audit-results/batch-${{ matrix.batch-index }}-*.jsonl audit-results/batch-${{ matrix.batch-index }}-*.json
+          git add audit-results/batch-${BATCH_PADDED}.jsonl audit-results/batch-${BATCH_PADDED}-summary.json
           if git diff --staged --quiet; then
             echo "No changes to commit (batch ${{ matrix.batch-index }})"
           else
@@ -137,5 +138,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: batch-${{ matrix.batch-index }}-results
-          path: web-daw-samples/audit-results/batch-${{ matrix.batch-index }}-*
+          path: web-daw-samples/audit-results/
           retention-days: 90
