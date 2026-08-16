@@ -1,21 +1,43 @@
 name: Sample Audit (Matrix)
 
+# GHA runner for sample-library audit. This repo (admin-sonicloud/sample-audit-runner)
+# has working GHA billing. The actual audit script, batch plan, manifests, and
+# results all live in zulfikarbarbora-outl/web-daw-samples (private).
+#
+# This workflow:
+#   1. Checks out web-daw-samples via WEB_DAW_SAMPLES_PAT (the zmmac1 PAT)
+#   2. Installs ffmpeg + Python deps
+#   3. Runs scripts/sample-audit-runner.py for one batch index
+#   4. Commits and pushes audit-results/batch-NNN.{jsonl,summary.json} back to
+#      web-daw-samples main (with retry on concurrent matrix pushes)
+#   5. Uploads the same files as a workflow artifact (90-day retention)
+#
+# See PAT_SEPARATION.md for why we use two PATs.
+
 on:
   workflow_dispatch:
     inputs:
       start-batch:
-        description: 'Start batch index'
+        description: Start batch index (inclusive)
         required: false
-        default: '0'
+        default: "0"
       end-batch:
-        description: 'End batch index (exclusive)'
+        description: End batch index (exclusive)
         required: false
-        default: '5'
+        default: "5"
   push:
-    branches: [main]
+    branches:
+      - main
     paths:
-      - 'scripts/**'
-      - '.github/workflows/audit-matrix.yml'
+      - .github/workflows/audit-matrix.yml
+      - scripts/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sample-audit-matrix
+  cancel-in-progress: false
 
 jobs:
   prepare:
@@ -24,16 +46,19 @@ jobs:
       matrix: ${{ steps.gen.outputs.matrix }}
     steps:
       - id: gen
+        env:
+          START_INPUT: ${{ github.event.inputs.start-batch }}
+          END_INPUT: ${{ github.event.inputs.end-batch }}
         run: |
-          START=${{ github.event.inputs.start-batch || '0' }}
-          END=${{ github.event.inputs.end-batch || '5' }}
+          START="${START_INPUT:-0}"
+          END="${END_INPUT:-5}"
           INDICES=""
           for i in $(seq $START $((END - 1))); do
             if [ -z "$INDICES" ]; then INDICES="$i"
             else INDICES="$INDICES,$i"
             fi
           done
-          echo "matrix=[$INDICES]" >> $GITHUB_OUTPUT
+          echo "matrix=[$INDICES]" >> "$GITHUB_OUTPUT"
           echo "Batches: [$INDICES]"
 
   audit:
@@ -46,43 +71,71 @@ jobs:
       matrix:
         batch-index: ${{ fromJson(needs.prepare.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
+      - name: Checkout web-daw-samples (private, via zmmac1 PAT)
+        uses: actions/checkout@v4
         with:
-          python-version: '3.12'
+          repository: zulfikarbarbora-outl/web-daw-samples
+          token: ${{ secrets.WEB_DAW_SAMPLES_PAT }}
+          fetch-depth: 1
+          path: web-daw-samples
 
-      - name: Install dependencies
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system deps (ffmpeg for opus)
         run: |
-          pip install -r requirements.txt
-          python3 -c "import librosa, soundfile, pyloudnorm; print('deps OK')"
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          ffmpeg -version | head -2
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r web-daw-samples/scripts/sample-audit-requirements.txt
+          python3 -c "import librosa, soundfile, pyloudnorm; print(\"deps OK\")"
 
       - name: Run audit batch ${{ matrix.batch-index }}
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_TOKEN: ${{ secrets.WEB_DAW_SAMPLES_PAT }}
         run: |
-          python3 scripts/audit-runner.py --batch-index ${{ matrix.batch-index }} --results-dir results/
-
-      - name: Upload results
-        uses: actions/upload-artifact@v4
-        with:
-          name: batch-${{ matrix.batch-index }}-results
-          path: results/
-          retention-days: 90
-
-      - name: Push results to results repo
-        env:
-          RESULTS_PAT: ${{ secrets.RESULTS_PAT }}
-        run: |
-          cd results
-          git init
-          git config user.name "audit-bot"
-          git config user.email "audit-bot@users.noreply.github.com"
-          git checkout -b main
-          git add .
-          git commit -m "batch ${{ matrix.batch-index }} results"
-          git push --force "https://${RESULTS_PAT}@github.com/admin-sonicloud/sample-audit-results.git" main
+          cd web-daw-samples
+          python3 scripts/sample-audit-runner.py --batch-index ${{ matrix.batch-index }} --results-dir audit-results/
 
       - name: Print summary
         run: |
-          cat results/batch-${{ matrix.batch-index }}-summary.json || echo "No summary file"
+          cat web-daw-samples/audit-results/batch-${{ matrix.batch-index }}-summary.json || echo "No summary file"
+
+      - name: Commit results back to web-daw-samples
+        env:
+          WEB_DAW_SAMPLES_PAT: ${{ secrets.WEB_DAW_SAMPLES_PAT }}
+        run: |
+          cd web-daw-samples
+          git config user.name "audit-bot"
+          git config user.email "audit-bot@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${WEB_DAW_SAMPLES_PAT}@github.com/zulfikarbarbora-outl/web-daw-samples.git"
+          git pull --rebase --autostash origin main || true
+          git add audit-results/batch-${{ matrix.batch-index }}-*.jsonl audit-results/batch-${{ matrix.batch-index }}-*.json
+          if git diff --staged --quiet; then
+            echo "No changes to commit (batch ${{ matrix.batch-index }})"
+          else
+            git commit -m "audit: batch ${{ matrix.batch-index }} results (GHA)"
+            for attempt in 1 2 3 4 5 6 7 8 9 10; do
+              if git push origin main; then
+                echo "Push succeeded on attempt $attempt"
+                break
+              fi
+              echo "Push attempt $attempt failed (likely concurrent matrix push) - pulling and retrying"
+              git pull --rebase --autostash origin main || true
+              sleep $((attempt * 5))
+            done
+          fi
+
+      - name: Upload results as artifact (backup)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: batch-${{ matrix.batch-index }}-results
+          path: web-daw-samples/audit-results/batch-${{ matrix.batch-index }}-*
+          retention-days: 90
