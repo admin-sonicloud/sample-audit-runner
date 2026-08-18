@@ -144,7 +144,7 @@ jobs:
           git remote set-url origin "https://x-access-token:${WEB_DAW_SAMPLES_PAT}@github.com/zulfikarbarbora-outl/web-daw-samples.git"
           
           # Pull latest (other jobs may have updated tracker)
-          git pull --rebase --autostash origin main || true
+          git pull --no-rebase --autostash origin main || true
           
           # Mark batch as done in progress tracker
           python3 -c "
@@ -182,7 +182,7 @@ jobs:
                 break
               fi
               echo "Push attempt $attempt failed — pulling and retrying"
-              git pull --rebase --autostash origin main || true
+              git pull --no-rebase --autostash origin main || true
               sleep $((attempt * 5))
             done
           fi
@@ -216,7 +216,7 @@ jobs:
           git config user.name "audit-bot"
           git config user.email "audit-bot@users.noreply.github.com"
           git remote set-url origin "https://x-access-token:${WEB_DAW_SAMPLES_PAT}@github.com/zulfikarbarbora-outl/web-daw-samples.git"
-          git pull --rebase --autostash origin main || true
+          git pull --no-rebase --autostash origin main || true
           
           # The matrix batch-index isn't directly available here, so we 
           # mark ALL in_progress batches as failed (they should have been

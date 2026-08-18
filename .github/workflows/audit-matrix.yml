@@ -106,7 +106,7 @@ jobs:
           git config user.name "audit-bot"
           git config user.email "audit-bot@users.noreply.github.com"
           git remote set-url origin "https://x-access-token:${WEB_DAW_SAMPLES_PAT}@github.com/zulfikarbarbora-outl/web-daw-samples.git"
-          git pull --rebase --autostash origin main || true
+          git pull --no-rebase --autostash origin main || true
           git add audit-results/batch-${BATCH_PADDED}.jsonl audit-results/batch-${BATCH_PADDED}-summary.json
           if git diff --staged --quiet; then
             echo "No changes to commit (batch ${{ matrix.batch-index }})"
@@ -118,7 +118,7 @@ jobs:
                 break
               fi
               echo "Push attempt $attempt failed (likely concurrent matrix push) - pulling and retrying"
-              git pull --rebase --autostash origin main || true
+              git pull --no-rebase --autostash origin main || true
               sleep $((attempt * 5))
             done
           fi
