@@ -125,7 +125,7 @@ jobs:
           GH_TOKEN: ${{ secrets.WEB_DAW_SAMPLES_PAT }}
         run: |
           cd web-daw-samples
-          python3 scripts/sample-audit-runner.py --batch-index ${{ matrix.batch-index }} --results-dir audit-results/
+          python3 scripts/sample-audit-runner-v2.py --batch-index ${{ matrix.batch-index }} --results-dir audit-results/
 
       - name: Print summary
         run: |
