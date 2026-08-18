@@ -1,0 +1,209 @@
+name: Sample Audit (Auto-Scheduled v2)
+
+# Scheduled audit runner with ATOMIC progress tracking via GitHub API.
+#
+# Uses scripts/update-tracker.py (GitHub Contents API with SHA-based
+# optimistic locking) instead of git pull/push for tracker updates.
+# This eliminates merge conflicts from concurrent GHA jobs.
+#
+# Triggers:
+#   - schedule: every 2 hours
+#   - workflow_dispatch: manual with optional max-batches
+
+on:
+  schedule:
+    - cron: '5 */2 * * *'
+  workflow_dispatch:
+    inputs:
+      max-batches:
+        description: 'Max batches to claim (default 10)'
+        required: false
+        default: '10'
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.claim.outputs.matrix }}
+      count: ${{ steps.claim.outputs.count }}
+    steps:
+      - name: Checkout web-daw-samples (for scripts)
+        uses: actions/checkout@v4
+        with:
+          repository: zulfikarbarbora-outl/web-daw-samples
+          token: ${{ secrets.WEB_DAW_SAMPLES_PAT }}
+          fetch-depth: 1
+          path: web-daw-samples
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Claim batches atomically
+        id: claim
+        env:
+          WEB_DAW_SAMPLES_PAT: ${{ secrets.WEB_DAW_SAMPLES_PAT }}
+        run: |
+          cd web-daw-samples
+          MAX_BATCHES="${{ github.event.inputs.max-batches || '10' }}"
+          # Claim batches via atomic API
+          OUTPUT=$(python3 scripts/update-tracker.py claim --max $MAX_BATCHES --output json 2>/tmp/claim.log)
+          cat /tmp/claim.log >&2
+          echo "$OUTPUT"
+          INDICES=$(echo "$OUTPUT" | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin)['claimed']))")
+          COUNT=$(echo "$OUTPUT" | python3 -c "import sys,json; print(len(json.load(sys.stdin)['claimed']))")
+          echo "matrix=$INDICES" >> $GITHUB_OUTPUT
+          echo "count=$COUNT" >> $GITHUB_OUTPUT
+
+  audit:
+    needs: prepare
+    if: needs.prepare.outputs.count != '0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        batch-index: ${{ fromJson(needs.prepare.outputs.matrix) }}
+    steps:
+      - name: Checkout web-daw-samples
+        uses: actions/checkout@v4
+        with:
+          repository: zulfikarbarbora-outl/web-daw-samples
+          token: ${{ secrets.WEB_DAW_SAMPLES_PAT }}
+          fetch-depth: 1
+          path: web-daw-samples
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install system deps (ffmpeg)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r web-daw-samples/scripts/sample-audit-requirements.txt
+          python3 -c "import librosa, soundfile, pyloudnorm; print('deps OK')"
+
+      - name: Run audit batch ${{ matrix.batch-index }}
+        env:
+          GH_TOKEN: ${{ secrets.WEB_DAW_SAMPLES_PAT }}
+        run: |
+          cd web-daw-samples
+          python3 scripts/sample-audit-runner-v2.py --batch-index ${{ matrix.batch-index }} --results-dir audit-results/
+
+      - name: Print summary
+        run: cat web-daw-samples/audit-results/batch-${{ matrix.batch-index }}-summary.json || echo "No summary"
+
+      - name: Upload results + mark done atomically
+        env:
+          WEB_DAW_SAMPLES_PAT: ${{ secrets.WEB_DAW_SAMPLES_PAT }}
+        run: |
+          cd web-daw-samples
+          BATCH_IDX=${{ matrix.batch-index }}
+          BATCH_PADDED=$(printf "%03d" $BATCH_IDX)
+          
+          git config user.name "audit-bot"
+          git config user.email "audit-bot@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${WEB_DAW_SAMPLES_PAT}@github.com/zulfikarbarbora-outl/web-daw-samples.git"
+          
+          # Add results files
+          git add audit-results/batch-${BATCH_PADDED}.jsonl audit-results/batch-${BATCH_PADDED}-summary.json
+          
+          if git diff --staged --quiet; then
+            echo "No results to commit"
+          else
+            git commit -m "audit: batch $BATCH_IDX results"
+            # Push results (retry on conflict)
+            for attempt in 1 2 3 4 5 6 7 8 9 10; do
+              if git pull --no-rebase --autostash origin main && git push origin main; then
+                echo "Results pushed on attempt $attempt"
+                break
+              fi
+              echo "Push attempt $attempt failed — retrying"
+              sleep $((attempt * 3))
+            done
+          fi
+          
+          # Mark batch as done in tracker (ATOMIC via API — no git conflicts)
+          python3 scripts/update-tracker.py update --batch $BATCH_IDX --status done
+
+      - name: Upload artifact (backup)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: batch-${{ matrix.batch-index }}-results
+          path: web-daw-samples/audit-results/batch-${{ matrix.batch-index }}-*
+          retention-days: 90
+
+  mark-failed:
+    needs: audit
+    if: always() && needs.audit.result == 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout web-daw-samples
+        uses: actions/checkout@v4
+        with:
+          repository: zulfikarbarbora-outl/web-daw-samples
+          token: ${{ secrets.WEB_DAW_SAMPLES_PAT }}
+          fetch-depth: 1
+          path: web-daw-samples
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Mark in_progress batches as failed
+        env:
+          WEB_DAW_SAMPLES_PAT: ${{ secrets.WEB_DAW_SAMPLES_PAT }}
+        run: |
+          cd web-daw-samples
+          # Read tracker, move any in_progress to failed
+          python3 -c "
+          import json, os, urllib.request, base64, sys
+          sys.path.insert(0, 'scripts')
+          PAT = os.environ['WEB_DAW_SAMPLES_PAT']
+          # Read tracker
+          req = urllib.request.Request(
+              'https://api.github.com/repos/zulfikarbarbora-outl/web-daw-samples/contents/audit-results/_progress.json',
+              headers={'Authorization': f'token {PAT}', 'Accept': 'application/vnd.github+json'}
+          )
+          data = json.loads(urllib.request.urlopen(req).read())
+          tracker = json.loads(base64.b64decode(data['content']).decode())
+          sha = data.get('sha')
+          b = tracker['batches']
+          in_prog = b.get('in_progress', [])
+          failed = b.get('failed', [])
+          for batch in in_prog:
+              if batch not in failed:
+                  failed.append(batch)
+          b['failed'] = sorted(set(failed))
+          b['in_progress'] = []
+          tracker['batches'] = b
+          # Write back
+          content = json.dumps(tracker, indent=2)
+          encoded = base64.b64encode(content.encode()).decode()
+          body = json.dumps({
+              'message': 'tracker: mark failed batches',
+              'content': encoded,
+              'sha': sha,
+              'branch': 'main'
+          }).encode()
+          req = urllib.request.Request(
+              'https://api.github.com/repos/zulfikarbarbora-outl/web-daw-samples/contents/audit-results/_progress.json',
+              data=body, method='PUT',
+              headers={'Authorization': f'token {PAT}', 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json'}
+          )
+          urllib.request.urlopen(req)
+          print(f'Marked {len(in_prog)} batches as failed')
+          "
